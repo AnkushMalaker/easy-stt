@@ -1,3 +1,6 @@
+import sys, os
+
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 import torch
 import io
 import pyaudio
@@ -6,7 +9,7 @@ from typing import List, Optional
 from transformers import Wav2Vec2Processor, Wav2Vec2ConformerForCTC
 import torchaudio.functional as taF
 import torch.nn as nn
-from Models import AvailablePretrainedModels
+from Models import AvailablePretrainedModels, load_model
 from argparse import ArgumentParser
 
 SAMPLE_RATE = 47800
@@ -21,7 +24,7 @@ def read_audio():
     FORMAT = pyaudio.paFloat32
     CHANNELS = 1
     RATE = SAMPLE_RATE
-    RECORD_SECONDS = 5
+    RECORD_SECONDS = 15
 
     p = pyaudio.PyAudio()
     stream = p.open(
@@ -59,7 +62,7 @@ def main(model_name: str, device: str, output_path: Optional[str] = None):
     DEVICE = torch.device(device)
 
     processor = Wav2Vec2Processor.from_pretrained(model_name)
-    model: nn.Module = Wav2Vec2ConformerForCTC.from_pretrained(model_name)  # type: ignore
+    model: nn.Module = load_model(model_name)
     model = model.to(DEVICE)
 
     resampled_rate = processor.feature_extractor.sampling_rate  # type: ignore

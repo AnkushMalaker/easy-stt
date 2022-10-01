@@ -45,7 +45,8 @@ def main(
 
     transcripts = []
     if os.path.isfile(input_file_or_dir_path):
-        transcripts = infer_from_sample(input_file_or_dir_path, model, processor, DEVICE)
+        transcript = infer_from_sample(input_file_or_dir_path, model, processor, DEVICE)
+        transcripts = {"filename": input_file_or_dir_path, "transcript": transcript[0]}
     else:
         file_names = os.listdir(input_file_or_dir_path)
         file_paths = [os.path.join(input_file_or_dir_path, file_name) for file_name in file_names]
@@ -56,16 +57,19 @@ def main(
             transcripts.append({"filename": file_name, "transcript": transcription[0]})
 
             print(file_name)
-            print(transcription)
+            print(transcription[0])
             print()
 
     if output_file_path:
         df = pd.DataFrame(transcripts)
+        df.set_index("filename", inplace=True)
         df.to_csv(output_file_path, sep=",")
 
 
 if __name__ == "__main__":
     parser = ArgumentParser()
+    parser.add_argument("input_file_or_dir_path", type=str)
+    parser.add_argument("output_file_path", type=str)
     parser.add_argument("--model_name", type=str)
     parser.add_argument("--device", "-d", type=str, default="cuda")
     parser.add_argument("--choose_model", "-c", default=False, action="store_true")
@@ -88,7 +92,15 @@ if __name__ == "__main__":
         print("Need to provide a model_name. Use -c to choose.")
         exit()
 
+    input_file_or_dir_path = args.input_file_or_dir_path
+    output_file_path = args.output_file_path
     device = args.device
     weights_path = args.weights
 
-    main(model_name, device, weights_path)
+    main(
+        input_file_or_dir_path=input_file_or_dir_path,
+        output_file_path=output_file_path,
+        model_name=model_name,
+        device=device,
+        weights_path=weights_path,
+    )
