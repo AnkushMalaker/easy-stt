@@ -19,7 +19,7 @@ def write_wav(buffer, path, rate):
     sf.write(path, buffer, rate)
 
 
-def read_audio():
+def read_audio(audio_device_index: int):
     CHUNK = 1024
     FORMAT = pyaudio.paFloat32
     CHANNELS = 1
@@ -33,7 +33,7 @@ def read_audio():
         rate=RATE,
         input=True,
         frames_per_buffer=CHUNK,
-        input_device_index=1,
+        input_device_index=audio_device_index,
     )
 
     print("Listening... ")
@@ -58,7 +58,7 @@ def read_audio():
     # p.terminate()
 
 
-def main(model_name: str, device: str, output_path: Optional[str] = None):
+def main(model_name: str, device: str, device_index: int, output_path: Optional[str] = None):
     DEVICE = torch.device(device)
 
     processor = Wav2Vec2Processor.from_pretrained(model_name)
@@ -68,7 +68,7 @@ def main(model_name: str, device: str, output_path: Optional[str] = None):
     resampled_rate = processor.feature_extractor.sampling_rate  # type: ignore
 
     transcriptions = []
-    for frames in read_audio():
+    for frames in read_audio(device_index):
 
         combined_frames = b"".join(frames)
 
@@ -98,12 +98,34 @@ def main(model_name: str, device: str, output_path: Optional[str] = None):
             f.writelines("\n".join(transcriptions))
 
 
+def choose_audio_device() -> int:
+    p = pyaudio.PyAudio()
+    j = p.get_device_count()
+    for i in range(j):
+        print(f"Index: {i}: {p.get_device_info_by_index(i)['name']}")
+    chosen_index = int(input())
+    return chosen_index
+
+
 if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument("--model_name", type=str)
     parser.add_argument("--device", type=str, default="cuda")
     parser.add_argument("--output_path", type=str)
-    parser.add_argument("--choose_model", "-c", default=False, action="store_true")
+    parser.add_argument(
+        "--choose_model",
+        "-m",
+        default=False,
+        help="specify this flag to choose one of available models via a prmopt shown.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--choose_audio_device",
+        "-d",
+        default=False,
+        help="specify this flag to choose one of available audio_devices via a prmopt shown.",
+        action="store_true",
+    )
     args = parser.parse_args()
     if args.model_name:
         model_name = args.model_name
@@ -120,5 +142,10 @@ if __name__ == "__main__":
     else:
         print("Need to provide a model_name. Use -c to choose.")
         exit()
+
+    if args.choose_audio_device:
+        device_index = choose_audio_device()
+    else:
+        device_index = 0
     device = args.device
-    main(model_name, device, output_path=args.output_path)
+    main(model_name, device, device_index=device_index, output_path=args.output_path)
