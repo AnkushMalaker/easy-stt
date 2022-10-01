@@ -46,7 +46,8 @@ def main(
     transcripts = []
     if os.path.isfile(input_file_or_dir_path):
         transcript = infer_from_sample(input_file_or_dir_path, model, processor, DEVICE)
-        transcripts = {"filename": input_file_or_dir_path, "transcript": transcript[0]}
+        transcripts = [{"filename": input_file_or_dir_path, "transcript": transcript[0]}]
+        print(transcript[0])
     else:
         file_names = os.listdir(input_file_or_dir_path)
         file_paths = [os.path.join(input_file_or_dir_path, file_name) for file_name in file_names]
@@ -61,7 +62,7 @@ def main(
             print()
 
     if output_file_path:
-        df = pd.DataFrame(transcripts)
+        df = pd.DataFrame(transcripts, index=[0] if len(transcripts) == 1 else None)
         df.set_index("filename", inplace=True)
         df.to_csv(output_file_path, sep=",")
 
