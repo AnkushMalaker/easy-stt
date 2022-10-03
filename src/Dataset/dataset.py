@@ -38,6 +38,11 @@ class ASRDataset(Dataset):
 
         self.max_processed_audio_len = max_processed_audio_len
 
+    def normalize_text(self, text: str, capitalize=True) -> str:
+        if capitalize:
+            text = text.upper()
+        return text
+
     def load_sample(self, audio_filepath: str, text: str):
         audio_array, orig_sr = load_audio_file(filepath=audio_filepath, mono=True)
 
@@ -52,7 +57,9 @@ class ASRDataset(Dataset):
 
         trimmed_text = text.split(" ")
         trimmed_text = trimmed_text[0 : math.ceil(len(trimmed_text) * ratio)]
-        labels = self.processor(text=" ".join(trimmed_text)).input_ids
+        trimmed_text = " ".join(trimmed_text)
+        trimmed_text = self.normalize_text(trimmed_text, capitalize=True)
+        labels = self.processor(text=trimmed_text).input_ids
 
         return {"labels": labels, "input_values": processed_audio}
 

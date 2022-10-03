@@ -68,13 +68,13 @@ PREDEFINED_DATASET_CONFS = {
         common_voice_en_clips_dir_path.resolve().as_posix(),
         common_voice_en_train_tsv.resolve().as_posix(),
         "CommonVoice",
-        0.2,
+        0.05,
     ),
     "CommonVoiceEnTest": DatasetConf(
         common_voice_en_clips_dir_path.resolve().as_posix(),
         common_voice_en_test_tsv.resolve().as_posix(),
         "CommonVoice",
-        0.2,
+        0.05,
     ),
     "OpenSLR_Train": DatasetConf(
         openSLR_train_audio_clips_dir.resolve().as_posix(),
