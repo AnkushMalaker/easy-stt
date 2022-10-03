@@ -35,8 +35,9 @@ def main(
 
     processor = Wav2Vec2Processor.from_pretrained(model_name)
     if weights_path:
-        if os.path.isfile(weights_path):
+        if os.path.isdir(weights_path):
             model = load_model(weights_path)
+            print(f"Loaded weights from {weights_path}")
         else:
             model = load_model(model_name)
     else:

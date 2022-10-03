@@ -1,54 +1,111 @@
 from torch.utils.data import Dataset
+import math
 import torch
 from dataclasses import dataclass
-from .utils import get_recording_number, load_audio_file
-from transformers import Wav2Vec2Processor
+
+from torch.utils.data.dataset import ConcatDataset
+from .utils import (
+    common_voice_tsv_to_dict,
+    load_audio_file,
+    DatasetConf,
+    openslr_to_dict,
+    sample_dataset_dict,
+)
+from transformers.models.wav2vec2.processing_wav2vec2 import Wav2Vec2Processor
 from typing import Dict, List, Optional, Union
 import torchaudio.functional as taF
 import os
+
+# Procecss common voice
+
+# FIXME: Add step in preprocessing where training sample is split it two if too big?
+# How would you assign labels then tho sheesh
 
 
 class ASRDataset(Dataset):
     def __init__(
         self,
-        audio_dir_path: str,
-        true_transcripts_txt_file_path: str,
+        data_dict: Dict[str, str],
         processor: Wav2Vec2Processor,
-        audio_file_path_prefix: str = "Recording ",
+        max_processed_audio_len: int = 16000 * 30,
     ) -> None:
         super().__init__()
 
-        with open(true_transcripts_txt_file_path, "r") as f:
-            transcripts = f.readlines()
-        self.transcripts = [l.strip() for l in transcripts]
+        self.resampling_rate = processor.feature_extractor.sampling_rate  # type: ignore
+        self.processor = processor
 
-        audio_file_names = os.listdir(audio_dir_path)
-        audio_file_paths = [
-            os.path.join(audio_dir_path, audio_file_name) for audio_file_name in audio_file_names
-        ]
-        self.samples = []
-        resampling_rate = processor.feature_extractor.sampling_rate  # type: ignore
-        for audio_filename, audio_file_path in zip(audio_file_names, audio_file_paths):
-            recording_id = get_recording_number(
-                file_name=audio_filename, prefix=audio_file_path_prefix
-            )
-            transcript_id = recording_id - 1  # Assuming recordings filenames start from 1
-            audio_array, orig_sr = load_audio_file(file_path=audio_file_path, mono=True)
+        self.samples_list = list(data_dict.items())  # list of tuples (fpath, text)
 
-            audio_array = taF.resample(audio_array, orig_sr, resampling_rate)
+        self.max_processed_audio_len = max_processed_audio_len
 
-            processed_audio = processor(audio=audio_array, sampling_rate=resampling_rate)[
-                "input_values"
-            ][0]
-            labels = processor(text=self.transcripts[transcript_id]).input_ids
+    def load_sample(self, audio_filepath: str, text: str):
+        audio_array, orig_sr = load_audio_file(filepath=audio_filepath, mono=True)
 
-            self.samples.append({"labels": labels, "input_values": processed_audio})
+        audio_array = taF.resample(audio_array, orig_sr, self.resampling_rate)
+
+        processed_audio = self.processor(audio=audio_array, sampling_rate=self.resampling_rate)[
+            "input_values"
+        ][0]
+        original_processed_audio_len = processed_audio.size  # These are numpy arrays so size is int
+        processed_audio = processed_audio[: self.max_processed_audio_len]
+        ratio = processed_audio.size / original_processed_audio_len
+
+        trimmed_text = text.split(" ")
+        trimmed_text = trimmed_text[0 : math.ceil(len(trimmed_text) * ratio)]
+        labels = self.processor(text=" ".join(trimmed_text)).input_ids
+
+        return {"labels": labels, "input_values": processed_audio}
 
     def __len__(self) -> int:
-        return len(self.samples)
+        return len(self.samples_list)
 
     def __getitem__(self, index):
-        return self.samples[index]
+        return self.load_sample(*self.samples_list[index])
+
+
+def load_dataset(
+    dataset_conf: DatasetConf, processor, max_processed_audio_len: int = 16000 * 30
+) -> ASRDataset:
+    print(f"Loading {dataset_conf.labels_file}")
+    # audio_clips_dir_path: Union[str, Path]
+    # labels_file: Union[str, Path]
+    # type: Optional[str] = None
+    if dataset_conf.dataset_type == "OpenSLR":
+        dataset_dict = openslr_to_dict(
+            audio_clips_dir_path=dataset_conf.audio_clips_dir_path,
+            transcription_filepath=dataset_conf.labels_file,
+        )
+        asr_dataset = ASRDataset(
+            dataset_dict, processor=processor, max_processed_audio_len=max_processed_audio_len
+        )
+        print(asr_dataset.__len__())
+        return asr_dataset
+    elif dataset_conf.dataset_type == "CommonVoice":
+        dataset_dict = common_voice_tsv_to_dict(
+            clips_dir_path=dataset_conf.audio_clips_dir_path, csv_path=dataset_conf.labels_file
+        )
+        dataset_dict = sample_dataset_dict(dataset_dict, dataset_conf.sample_size)
+        asr_dataset = ASRDataset(
+            dataset_dict, processor=processor, max_processed_audio_len=max_processed_audio_len
+        )
+        print(asr_dataset.__len__())
+        return asr_dataset
+    else:
+        print("Unimplimented")
+        raise NotImplementedError
+
+
+def combine_datasets(
+    dataset_conf_list: List[DatasetConf], processor, max_processed_audio_len: int = 16000 * 30
+):
+    return ConcatDataset(
+        [
+            load_dataset(
+                ds_config, processor=processor, max_processed_audio_len=max_processed_audio_len
+            )
+            for ds_config in dataset_conf_list
+        ]
+    )
 
 
 @dataclass
