@@ -1,20 +1,19 @@
 import sys, os
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-from Dataset import DataCollatorCTCWithPadding, ASRDataset
+from Dataset import DataCollatorCTCWithPadding, combine_datasets
+from configs import TrainDatasetConfigs, TestDatasetConfigs
 
 from transformers import Wav2Vec2Processor, Wav2Vec2ForCTC, TrainingArguments, Trainer
 
 from datasets import load_metric
-from torch.utils.data import random_split
 from argparse import ArgumentParser
 import numpy as np
 
 
 def main(
     pretrained_model_name: str,
-    input_dir: str,
-    ground_truth_text_file_path: str,
+    output_path: str,
     freeze_feature_encoder: bool = True,
 ):
 
@@ -33,32 +32,25 @@ def main(
         model.freeze_feature_encoder()
 
     training_args = TrainingArguments(
-        output_dir="./output_dir",
+        output_dir=output_path,
         group_by_length=True,
         per_device_train_batch_size=2,
         evaluation_strategy="steps",
-        num_train_epochs=1000,
+        num_train_epochs=30,
         fp16=True,
         gradient_checkpointing=True,
-        gradient_accumulation_steps=2,
-        save_steps=50,
-        eval_steps=50,
-        logging_steps=50,
-        learning_rate=1e-4,
+        gradient_accumulation_steps=4,
+        save_steps=1000,
+        eval_steps=2000,
+        logging_steps=100,
+        learning_rate=1e-5,
         weight_decay=0.005,
-        warmup_steps=100,
+        warmup_steps=1000,
         save_total_limit=2,
     )
 
-    dataset = ASRDataset(
-        input_dir,
-        ground_truth_text_file_path,
-        processor=processor,
-    )
-    test_split = 0.2
-    train_dataset, test_dataset = random_split(
-        dataset, [int(len(dataset) - len(dataset) * test_split), int(len(dataset) * test_split)]
-    )
+    train_dataset = combine_datasets(TrainDatasetConfigs, processor=processor)
+    test_dataset = combine_datasets(TestDatasetConfigs, processor=processor)
 
     def compute_wer_metrics(pred):
         pred_logits = pred.predictions
@@ -89,8 +81,6 @@ def main(
 
 if __name__ == "__main__":
     parser = ArgumentParser()
-    parser.add_argument("input_dir", type=str, help="path/to/input/dir/containing/audio/files/")
-    parser.add_argument("ground_truth_text_file_path", type=str, help="path/to/ground/truth.txt")
     parser.add_argument(
         "--model_name",
         type=str,
@@ -103,9 +93,13 @@ if __name__ == "__main__":
         help="Specify this flag if you'd like to train the whole model and not just the final layer.",
         default=True,
     )
+    parser.add_argument("--output_path", "-o", default="./output_dir")
     args = parser.parse_args()
     model_name = args.model_name
-    input_dir = args.input_dir
-    ground_truth_text_file_path = args.ground_truth_text_file_path
     freeze_feature_encoder = args.no_freeze_feature_encoder
-    main(model_name, input_dir, ground_truth_text_file_path, freeze_feature_encoder)
+    output_path = args.output_path
+    main(
+        pretrained_model_name=model_name,
+        output_path=output_path,
+        freeze_feature_encoder=freeze_feature_encoder,
+    )
